@@ -1,10 +1,10 @@
 import numpy as np
 from scipy.stats import norm
 
-def compute_cva_long_call(S, K, T, r, sigma, credit_spread, LGD=0.45, n_steps=50):
+def compute_cva_long_call(S,K,T,r,sigma,credit_spread,LGD=0.45,n_steps=50):
     """
     Calcule la CVA (Credit Valuation Adjustment) pour une option d'achat (Long Call).
-    Méthode : Simulation de l'Expected Exposure (EE) * Probabilité de Défaut.
+    Simulation de l'Expected Exposure (EE) * Probabilité de Défaut.
     
     Paramètres:
     S : Prix Spot du sous-jacent
@@ -12,27 +12,27 @@ def compute_cva_long_call(S, K, T, r, sigma, credit_spread, LGD=0.45, n_steps=50
     T : Maturité (années)
     r : Taux sans risque
     sigma : Volatilité
-    credit_spread : Spread de crédit de la contrepartie (proxy pour la PD)
+    credit_spread : Spread de crédit de la contrepartie
     """
-    dt = T / n_steps
-    cva_accumulated = 0.0
+    dt=T/n_steps
+    cva_accumulated=0.0
     
     # Probabilité de défaut marginale (approximée par le spread)
     # PD(t, t+dt) ~ 1 - exp(-spread * dt)
-    marginal_pd = 1 - np.exp(-credit_spread * dt)
+    marginal_pd=1-np.exp(-credit_spread*dt)
 
-    for i in range(1, n_steps + 1):
-        t = i * dt
+    for i in range(1,n_steps+1):
+        t=i*dt
         
         # Calcul du prix Black-Scholes à l'instant t (Expected Exposure)
-        d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * t) / (sigma * np.sqrt(t))
-        d2 = d1 - sigma * np.sqrt(t)
+        d1=(np.log(S/K)+(r+0.5*sigma**2)*t)/(sigma*np.sqrt(t))
+        d2=d1-sigma*np.sqrt(t)
         
         # Prix du Call (Exposition positive attendue)
-        ee_t = S * norm.cdf(d1) - K * np.exp(-r * t) * norm.cdf(d2)
+        ee_t=S*norm.cdf(d1)-K*np.exp(-r*t)*norm.cdf(d2)
         
         # Si l'option est hors de la monnaie, l'exposition est nulle
-        ee_t = max(ee_t, 0)
+        ee_t=max(ee_t, 0)
         
         # Contribution à la CVA = Perte * Expo * Proba Défaut
         # Discount factor (actualisation)
