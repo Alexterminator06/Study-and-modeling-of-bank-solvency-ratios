@@ -1,3 +1,5 @@
+from time import time
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -28,12 +30,65 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. DONNÉES & CALCULS ---
+st.title("🏦 Solvency Control Room")
+
+with st.expander("⚙️ Mise à jour des données EBA (Scraping)", expanded=True): # mis sur "True" pour qu'il soit ouvert si c'est vide
+    st.info("Aucune donnée ? Sélectionnez une période et lancez l'extraction.")
+    
+    c_sel, c_btn = st.columns([1, 2])
+    with c_sel:
+        selected_year = st.selectbox("Période cible :", ["2024", "2023", "2022"])
+    with c_btn:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Lancer l'extraction et le calcul"):
+            with st.spinner(f"Extraction et calculs en cours pour {selected_year}..."):
+                try:
+                    from src import scraper, etl
+                    
+                    # 1. Scraping
+                    raw_files_dict = scraper.download_eba_data(period=selected_year)
+                    
+                    if raw_files_dict:
+                        st.write("📥 Fichiers téléchargés. Lancement de l'ETL...")
+                        
+                        # 2. Nettoyage
+                        df_clean = etl.run_etl(raw_files_dict) 
+                        
+                        if df_clean is not None and not df_clean.empty:
+                            st.write("🧮 Harmonisation des données...")
+                            
+                            # --- CORRECTION ICI ---
+                            # On harmonise le nom de la colonne RWA
+                            if 'RWA_Total' in df_clean.columns:
+                                df_clean.rename(columns={'RWA_Total': 'RWA_Final'}, inplace=True)
+                            
+                            # 3. Sauvegarde directe
+                            # (Les ratios complexes sont calculés automatiquement à la volée par app.py !)
+                            os.makedirs("data/processed", exist_ok=True)
+                            df_clean.to_csv("data/processed/final_results_2025.csv", index=False)
+                            st.success("✅ Base de données actualisée avec succès !")
+                            
+                            # 4. Recharge la page
+                            st.cache_data.clear()
+                            st.rerun()
+                        else:
+                            st.error("❌ Échec lors du nettoyage des données (ETL).")
+                    else:
+                        st.error("❌ Échec du téléchargement.")
+                except Exception as e:
+                    st.error(f"❌ Erreur critique du système : {e}")
+
+# --- 3. DONNÉES & CALCULS ---
 @st.cache_data
 def load_data():
     path = "data/processed/final_results_2025.csv"
-    if not os.path.exists(path): return pd.DataFrame()
+    # Si le fichier n'existe pas, on renvoie tout de suite un dataframe vide
+    if not os.path.exists(path): 
+        return pd.DataFrame()
+        
     df = pd.read_csv(path)
+    if df.empty:
+        return pd.DataFrame()
     
     # Mapping Noms (Liste étendue des principales banques européennes EBA)
     lei_mapping = {
@@ -104,23 +159,57 @@ def load_data():
     }
     df['Bank_Label'] = df.apply(lambda x: f"{lei_mapping.get(x['LEI'], 'Banque ' + str(x.get('NSA', 'EU')) + ' - ' + x['LEI'])}", axis=1)
 
-    # Sécurité colonnes
+    # --- Vérification des colonnes brutes ---
     cols_check = ['Total_Assets', 'RWA_Final', 'Tier1_Capital', 'CET1_Capital', 'Total_Capital',
-                  'Net_Income', 'NPL_Amount', 'LCR_Ratio_Pct', 'NSFR_Ratio_Pct', 'LTD_Ratio_Pct', 
-                  'Texas_Ratio_Pct', 'P2R_Pct', 'P2G_Pct', 'CBR_Pct', 'SREP_Requirement_Pct', 
-                  'MREL_Ratio_Pct', 'Leverage_Ratio_Pct', 'Capital_Buffer_Pct']
+                  'Net_Income', 'NPL_Amount', 'Loans_Gross', 'Provisions_Stock', 'Leverage_Exposure']
     for col in cols_check:
         if col not in df.columns: df[col] = 0.0
 
-    # Calculs à la volée
-    if 'AT1_Ratio_Pct' not in df.columns:
-        if 'Tier1_Ratio_Pct' in df.columns and 'CET1_Ratio_Pct' in df.columns:
-            df['AT1_Ratio_Pct'] = df['Tier1_Ratio_Pct'] - df['CET1_Ratio_Pct']
-        else:
-            df['AT1_Ratio_Pct'] = 0.0
-            
+    if 'Date' not in df.columns: df['Date'] = "Inconnue"
+
+    # ==========================================
+    # 🧮 CALCUL DES RATIOS DE SOLVABILITÉ BÂLE III
+    # ==========================================
+    # 1. Ratios de Capital
+    df['CET1_Ratio_Pct'] = np.where(df['RWA_Final'] > 0, (df['CET1_Capital'] / df['RWA_Final']) * 100, 0)
+    df['Tier1_Ratio_Pct'] = np.where(df['RWA_Final'] > 0, (df['Tier1_Capital'] / df['RWA_Final']) * 100, 0)
+    df['TCR_Pct'] = np.where(df['RWA_Final'] > 0, (df['Total_Capital'] / df['RWA_Final']) * 100, 0)
+    df['AT1_Ratio_Pct'] = df['Tier1_Ratio_Pct'] - df['CET1_Ratio_Pct']
+    
+    # 2. Ratio de Levier
+    exposure = df['Leverage_Exposure'] if 'Leverage_Exposure' in df.columns else df['Total_Assets']
+    df['Leverage_Ratio_Pct'] = np.where(exposure > 0, (df['Tier1_Capital'] / exposure) * 100, 0)
+
+    # 3. Rentabilité et Densité
     df['ROE_Pct'] = df.apply(lambda x: (x['Net_Income']/x['Tier1_Capital']*100) if x['Tier1_Capital']>0 else 0, axis=1)
     df['Risk_Density_Pct'] = df.apply(lambda x: (x['RWA_Final']/x['Total_Assets']*100) if x['Total_Assets']>0 else 0, axis=1)
+    
+    # 4. Proxies de Liquidité (LCR, NSFR, LTD)
+    df['Deposits_Proxy'] = df['Total_Assets'] * 0.60
+    df['HQLA_Proxy'] = df['Total_Assets'] * 0.15
+    
+    asf = df['Total_Capital'] * 1.0 + df['Deposits_Proxy'] * 0.90
+    other_assets = (df['Total_Assets'] - df['Loans_Gross'] - df['HQLA_Proxy']).clip(lower=0) 
+    rsf = (df['Loans_Gross'] * 0.70) + (other_assets * 0.85)
+    
+    df['NSFR_Ratio_Pct'] = np.where(rsf > 0, (asf / rsf) * 100, 0)
+    df['Net_Outflows_Proxy'] = df['Deposits_Proxy'] * 0.10
+    df['LCR_Ratio_Pct'] = np.where(df['Net_Outflows_Proxy'] > 0, (df['HQLA_Proxy'] / df['Net_Outflows_Proxy']) * 100, 0)
+    df['LTD_Ratio_Pct'] = np.where(df['Deposits_Proxy'] > 0, (df['Loans_Gross'] / df['Deposits_Proxy']) * 100, 0)
+
+    # 5. Ratios de Risque (Texas, NPL, MREL)
+    df['Texas_Ratio_Pct'] = np.where((df['CET1_Capital'] + df['Provisions_Stock']) > 0, 
+                                     (df['NPL_Amount'] / (df['CET1_Capital'] + df['Provisions_Stock'])) * 100, 0)
+    df['NPL_Ratio_Pct'] = np.where(df['Loans_Gross'] > 0, (df['NPL_Amount'] / df['Loans_Gross']) * 100, 0)
+    df['MREL_Ratio_Pct'] = np.where(df['RWA_Final'] > 0, ((df['Total_Capital'] + (df['Total_Assets'] * 0.15)) / df['RWA_Final']) * 100, 0)
+
+    # 6. SREP (Exigences Réglementaires)
+    if 'P2R_Pct' not in df.columns: df['P2R_Pct'] = 2.0
+    if 'P2G_Pct' not in df.columns: df['P2G_Pct'] = 1.0
+    if 'CBR_Pct' not in df.columns: df['CBR_Pct'] = 2.5
+    df['SREP_Requirement_Pct'] = 8.0 + df['P2R_Pct'] + df['CBR_Pct']
+    
+    df['Capital_Buffer_Pct'] = df['TCR_Pct'] - df['SREP_Requirement_Pct']
 
     return df.replace([np.inf, -np.inf], 0).fillna(0)
 
@@ -131,143 +220,78 @@ market_means = df.mean(numeric_only=True)
 
 # --- 3. MOTEUR GRAPHIQUE ---
 def plot_gauge(value, min_th, max_th, inverse=False):
-    """Crée une jauge compacte sans titre (géré par st.metric)"""
-    if inverse: # Plus c'est bas, mieux c'est
-        colors = [
-            {'range': [0, min_th], 'color': "#2ecc71"},       # Vert
-            {'range': [min_th, max_th], 'color': "#f1c40f"}, # Orange
-            {'range': [max_th, max(value*1.2, max_th*1.5)], 'color': "#e74c3c"}   # Rouge
-        ]
-    else: # Plus c'est haut, mieux c'est
-        colors = [
-            {'range': [0, min_th], 'color': "#e74c3c"},       # Rouge
-            {'range': [min_th, max_th], 'color': "#f1c40f"}, # Orange
-            {'range': [max_th, max(100, max_th*1.5, value*1.2)], 'color': "#2ecc71"} # Vert
-        ]
+    if inverse: colors = [{'range': [0, min_th], 'color': "#2ecc71"}, {'range': [min_th, max_th], 'color': "#f1c40f"}, {'range': [max_th, max(value*1.2, max_th*1.5)], 'color': "#e74c3c"}]
+    else: colors = [{'range': [0, min_th], 'color': "#e74c3c"}, {'range': [min_th, max_th], 'color': "#f1c40f"}, {'range': [max_th, max(100, max_th*1.5, value*1.2)], 'color': "#2ecc71"}]
         
     fig = go.Figure(go.Indicator(
-        mode="gauge", # On retire "number" car affiché au dessus
-        value=value,
-        gauge={
-            'axis': {'range': [0, max(value*1.2, max_th*1.2)]},
-            'bar': {'color': "#2c3e50"},
-            'steps': colors,
-            'threshold': {'line': {'color': "black", 'width': 3}, 'thickness': 0.75, 'value': value}
-        }
+        mode="gauge", value=value,
+        gauge={'axis': {'range': [0, max(value*1.2, max_th*1.2)]}, 'bar': {'color': "#2c3e50"}, 'steps': colors, 'threshold': {'line': {'color': "black", 'width': 3}, 'thickness': 0.75, 'value': value}}
     ))
-    # Marges ultra-fines pour coller au texte du dessus
     fig.update_layout(height=100, margin=dict(l=10, r=10, t=0, b=0))
     return fig
 
 def card(col, val, title, txt, min_b, min_g, inverse=False):
     with col:
-        # 1. Le Titre + Valeur + Tooltip interactif (i)
         st.metric(label=title, value=f"{val:.2f}%", help=txt)
-        
-        # 2. La Jauge visuelle juste en dessous
         st.plotly_chart(plot_gauge(val, min_b, min_g, inverse), use_container_width=True)
 
 # --- 4. HEADER ---
 c1, c2 = st.columns([3, 1])
-with c1: 
-    st.title("🏦 Solvency Control Room")
-    st.caption("Tableau de bord de surveillance prudentielle (Bâle III / CRR)")
 with c2: 
     bank_list = sorted(df['Bank_Label'].unique())
     selected_label = st.selectbox("Sélectionner la Banque", bank_list)
 
 bank = df[df['Bank_Label'] == selected_label].iloc[0]
 
-# --- 5. SOLVABILITÉ & COUSSINS ---
-st.markdown("### 1. Solvabilité & Coussins de Capital")
+
+# --- 5. INDICATEURS CLÉS ---
+st.markdown("### 1. Solvabilité & Coussins")
 c1, c2, c3, c4, c5 = st.columns(5)
+card(c1, bank['CET1_Ratio_Pct'], "CET1 Ratio", "[Source : EBA Brute]\nCapital Dur (Actions). Le minimum réglementaire est de 4.5%.", 4.5, 9.0)
+card(c2, bank['AT1_Ratio_Pct'], "Ratio AT1", "[Source : Calculé]\nAdditional Tier 1. Déduit par différence (Tier 1 - CET1).", 1.0, 1.5)
+card(c3, bank['TCR_Pct'], "Total Capital", "[Source : EBA Brute]\nRatio Global de Solvabilité. Min 8%.", 8.0, 12.0)
+card(c4, bank['Leverage_Ratio_Pct'], "Levier (LR)", "[Source : EBA Brute]\nRatio de Levier (Bâle III). Min 3.0%.", 3.0, 4.0)
+card(c5, bank['Capital_Buffer_Pct'], "Coussin Dispo.", "[Source : Calculé vs SREP]\nExcédent de Capital réel au-dessus des exigences de la BCE.", 0.0, 2.0)
 
-card(c1, bank['CET1_Ratio_Pct'], "CET1 Ratio", 
-     "Capital Dur (Actions). Le minimum réglementaire est de 4.5%.", 4.5, 9.0)
-
-card(c2, bank['AT1_Ratio_Pct'], "Ratio AT1", 
-     "Additional Tier 1 (Dettes hybrides/CoCos). Cible ~1.5%.", 1.0, 1.5)
-
-card(c3, bank['TCR_Pct'], "Total Capital", 
-     "Ratio Global de Solvabilité (Fonds Propres Totaux / RWA). Min 8%.", 8.0, 12.0)
-
-card(c4, bank['Leverage_Ratio_Pct'], "Levier (LR)", 
-     "Ratio de Levier (Bâle III). Tier 1 / Total Actif. Min 3.0%.", 3.0, 4.0)
-
-card(c5, bank['Capital_Buffer_Pct'], "Coussin Dispo.", 
-     "Excédent de Capital au-dessus des exigences SREP. Si négatif, la banque est en danger.", 0.0, 2.0)
-
-# --- 6. EXIGENCES SREP ---
 st.markdown("### 2. Exigences Réglementaires (SREP)")
 s1, s2, s3, s4 = st.columns(4)
+card(s1, bank['P2R_Pct'], "Pilier 2 (P2R)", "[Source : Proxy Modèle]\nDonnée confidentielle BCE. Proxy fixé à 2% pour le stress test.", 1.5, 2.5, inverse=True)
+card(s2, bank['P2G_Pct'], "Guidance (P2G)", "[Source : Proxy Modèle]\nDonnée confidentielle BCE. Recommandation fixée à 1%.", 0.5, 1.5, inverse=True)
+card(s3, bank['CBR_Pct'], "Buffer Combiné", "[Source : Proxy Modèle]\nCoussins macroprudentiels estimés à 2.5%.", 1.5, 3.5, inverse=False)
+card(s4, bank['SREP_Requirement_Pct'], "Total SREP", "[Source : Calculé]\nP1 (8%) + P2R + CBR. Seuil de déclenchement des restrictions.", 9.0, 11.0, inverse=True)
 
-card(s1, bank['P2R_Pct'], "Pilier 2 (P2R)", 
-     "Exigence spécifique imposée par le superviseur pour les risques propres à la banque.", 1.5, 2.5, inverse=True)
-
-card(s2, bank['P2G_Pct'], "Guidance (P2G)", 
-     "Recommandation non contraignante de capital supplémentaire.", 0.5, 1.5, inverse=True)
-
-card(s3, bank['CBR_Pct'], "Buffer Combiné", 
-     "Total des coussins obligatoires (Conservation + CCyB + Systémique).", 1.5, 3.5, inverse=False)
-
-card(s4, bank['SREP_Requirement_Pct'], "Total SREP", 
-     "Ligne Rouge : Niveau total de capital requis (P1 + P2R + CBR).", 9.0, 11.0, inverse=True)
-
-# --- 7. LIQUIDITÉ & RISQUES ---
 st.markdown("### 3. Liquidité, Résolution & Risques")
 l1, l2, l3, l4, l5 = st.columns(5)
-
-card(l1, bank['LCR_Ratio_Pct'], "LCR (30j)", 
-     "Liquidity Coverage Ratio. Couverture des sorties nettes à 30j. Min 100%.", 100, 110)
-
-card(l2, bank['NSFR_Ratio_Pct'], "NSFR (1an)", 
-     "Net Stable Funding Ratio. Stabilité du financement à long terme. Min 100%.", 100, 110)
-
-card(l3, bank['MREL_Ratio_Pct'], "MREL / TLAC", 
-     "Capacité d'absorption des pertes (Bail-in). Cible ~20-25% RWA.", 18, 22)
-
-card(l4, bank['Texas_Ratio_Pct'], "Texas Ratio", 
-     "Vulnérabilité aux faillites. NPL / (Capital + Réserves). >100% est critique.", 50, 90, inverse=True)
-
-card(l5, bank['NPL_Ratio_Pct'], "Taux NPL", 
-     "Part des crédits douteux dans le portefeuille total.", 3.0, 5.0, inverse=True)
+card(l1, bank['LCR_Ratio_Pct'], "LCR (30j)", "[Source : Proxy Modèle]\nReconstruit via une estimation des HQLA et des sorties nettes. Min légal 100%.", 100, 110)
+card(l2, bank['NSFR_Ratio_Pct'], "NSFR (1an)", "[Source : Proxy Modèle]\nPondérations Bâle III appliquées sur les encours bilanciels de l'EBA. Min 100%.", 100, 110)
+card(l3, bank['MREL_Ratio_Pct'], "MREL / TLAC", "[Source : Proxy Modèle]\nCapacité d'absorption des pertes estimée à partir du bilan.", 18, 22)
+card(l4, bank['Texas_Ratio_Pct'], "Texas Ratio", "[Source : Calculé]\nNPL / (CET1 + Provisions). Indicateur avancé de faillite.", 50, 90, inverse=True)
+card(l5, bank['NPL_Ratio_Pct'], "Taux NPL", "[Source : Calculé]\nPart des crédits douteux bruts sur le total des prêts.", 3.0, 5.0, inverse=True)
 
 st.divider()
 
-# --- 8. ANALYSE COMPARATIVE (GRAPHIQUES) ---
+# --- 6. GRAPHIQUES AVANCÉS ---
 st.subheader("📊 Analyse Comparative Visuelle")
 g_left, g_right = st.columns(2)
 
 with g_left:
     st.markdown("**1. Matrice Stratégique (Rentabilité vs Risque)**")
-    
     color_opt = "NSA" if "NSA" in df.columns else None
     fig_scat = px.scatter(
         df, x="Risk_Density_Pct", y="ROE_Pct",
-        color=color_opt, size="Total_Assets",
-        hover_name="Bank_Label",
-        labels={"Risk_Density_Pct": "Risque (RWA/Actif %)", "ROE_Pct": "Rentabilité (ROE %)"}
+        color=color_opt, size="Total_Assets", hover_name="Bank_Label",
+        labels={"Risk_Density_Pct": "Densité RWA (%)", "ROE_Pct": "ROE (%)"}
     )
-    # DIAMANT PRO
     fig_scat.add_trace(go.Scatter(
         x=[bank['Risk_Density_Pct']], y=[bank['ROE_Pct']],
-        mode='markers', 
-        marker=dict(color='#D32F2F', size=18, symbol='diamond', line=dict(width=2, color='white')),
+        mode='markers', marker=dict(color='#D32F2F', size=18, symbol='diamond', line=dict(width=2, color='white')),
         name="MA BANQUE"
     ))
     fig_scat.update_layout(title="Positionnement Concurrentiel")
     st.plotly_chart(fig_scat, use_container_width=True)
-    
-    st.info("""
-    **Interprétation :**
-    * **En haut à gauche** (Haute Renta, Faible Risque) : Position idéale.
-    * **En bas à droite** (Faible Renta, Haut Risque) : Zone de danger.
-    * **Taille de la bulle** : Représente la taille du bilan (Total Actifs).
-    """)
 
 with g_right:
     st.markdown("**2. Benchmark Liquidité vs Moyenne Marché**")
-    
     cats = ['LCR', 'NSFR', 'LTD']
     vals_b = [bank['LCR_Ratio_Pct'], bank['NSFR_Ratio_Pct'], bank['LTD_Ratio_Pct']]
     vals_m = [market_means['LCR_Ratio_Pct'], market_means['NSFR_Ratio_Pct'], market_means['LTD_Ratio_Pct']]
@@ -276,62 +300,98 @@ with g_right:
         go.Bar(name='Ma Banque', x=cats, y=vals_b, marker_color='#2c3e50'),
         go.Bar(name='Moyenne Marché', x=cats, y=vals_m, marker_color='#95a5a6')
     ])
-    fig_bar.add_hline(y=100, line_dash="dash", line_color="red", annotation_text="Seuil Réglementaire (100%)")
+    fig_bar.add_hline(y=100, line_dash="dash", line_color="red", annotation_text="Exigence BCE (100%)")
     fig_bar.update_layout(barmode='group', title="Écart de Liquidité")
     st.plotly_chart(fig_bar, use_container_width=True)
-    
-    st.info("""
-    **Lecture du Benchmark :**
-    * La ligne rouge (100%) est le minimum vital pour le LCR et NSFR.
-    * Si les barres bleues sont **sous la ligne rouge**, la liquidité est insuffisante.
-    * Le LTD (Loan-to-Deposit) doit idéalement être proche ou inférieur à 100%.
-    """)
 
 st.divider()
 
-# --- 7. CONCLUSION AUTOMATISÉE ---
-st.subheader("🏁 Verdict de Solvabilité & Risques")
-
-# Logique de scoring
-verdict_color = "green"
-verdict_title = "SITUATION SOLIDE"
-messages = []
-
-# 1. Check Capital
-if bank['Capital_Buffer_Pct'] < 0:
-    verdict_color = "red"
-    verdict_title = "ALERTE : INFRACTION RÉGLEMENTAIRE"
-    messages.append("❌ La banque ne respecte pas ses exigences SREP (Coussin négatif). Augmentation de capital requise.")
-elif bank['Capital_Buffer_Pct'] < 1.0:
-    verdict_color = "orange"
-    verdict_title = "SITUATION TENDUE"
-    messages.append("⚠️ Le coussin de capital est faible (<1%). Marge de manœuvre limitée.")
-else:
-    messages.append("✅ La solvabilité est robuste avec un coussin confortable au-dessus des exigences.")
-
-# 2. Check Risque Crédit (Texas Ratio)
-if bank['Texas_Ratio_Pct'] > 100:
-    verdict_color = "red" if verdict_color != "red" else "red"
-    verdict_title = "RISQUE CRITIQUE D'INSOLVABILITÉ" if verdict_title != "ALERTE" else verdict_title
-    messages.append("❌ **Texas Ratio > 100%** : Les créances douteuses absorbent la totalité du capital tangible. Risque de faillite élevé.")
-elif bank['Texas_Ratio_Pct'] > 80:
-    messages.append("⚠️ La qualité du portefeuille est dégradée (Texas Ratio élevé).")
-
-# 3. Check Liquidité
-if bank['LCR_Ratio_Pct'] < 100 or bank['NSFR_Ratio_Pct'] < 100:
-    messages.append("⚠️ **Alerte Liquidité** : Certains ratios de liquidité sont sous le seuil réglementaire de 100%.")
-
-# Affichage
-if verdict_color == "green":
-    st.success(f"### {verdict_title}")
-elif verdict_color == "orange":
-    st.warning(f"### {verdict_title}")
-else:
-    st.error(f"### {verdict_title}")
-
-for msg in messages:
-    st.markdown(f"- {msg}")
+# --- 7. VERDICT DÉTAILLÉ (MÉTHODOLOGIE SREP) ---
+st.subheader("🏁 Rapport d'Inspection : Synthèse des Risques")
 
 st.markdown("""
-<small>Note : Ce verdict est généré automatiquement par un algorithme basé sur les seuils de Bâle III. Il ne constitue pas un conseil en investissement.</small>
-""", unsafe_allow_html=True)
+Cette section génère automatiquement une opinion de crédit basée sur les 4 piliers de l'analyse bancaire (Solvabilité, Qualité des Actifs, Liquidité, Rentabilité).
+""")
+
+# Initialisation des compteurs d'alerte
+alert_count = 0
+warning_count = 0
+
+p1, p2 = st.columns(2)
+p3, p4 = st.columns(2)
+
+# --- PILIER 1 : SOLVABILITÉ (Capital) ---
+with p1:
+    st.markdown("#### 🛡️ Pilier 1 : Solvabilité")
+    if bank['Capital_Buffer_Pct'] < 0:
+        st.error(f"**CRITIQUE** : La banque est en infraction réglementaire avec un déficit de capital de {bank['Capital_Buffer_Pct']:.2f}%. Risque de restrictions sur les dividendes (MDA).")
+        alert_count += 1
+    elif bank['Capital_Buffer_Pct'] < 1.5:
+        st.warning(f"**TENDU** : Coussin de sécurité très fin ({bank['Capital_Buffer_Pct']:.2f}%). La banque a très peu de marge de manœuvre en cas de stress macroéconomique.")
+        warning_count += 1
+    else:
+        st.success(f"**SOLIDE** : Excellente capitalisation. Le coussin de {bank['Capital_Buffer_Pct']:.2f}% permet d'absorber des chocs sévères tout en respectant le Pilier 2.")
+
+# --- PILIER 2 : QUALITÉ DES ACTIFS (Asset Quality) ---
+with p2:
+    st.markdown("#### 📉 Pilier 2 : Qualité des Actifs")
+    if bank['Texas_Ratio_Pct'] > 100 or bank['NPL_Ratio_Pct'] > 5.0:
+        st.error(f"**CRITIQUE** : Texas Ratio alarmant ({bank['Texas_Ratio_Pct']:.0f}%) ou NPL trop lourd ({bank['NPL_Ratio_Pct']:.1f}%). Les créances douteuses menacent directement la viabilité de la banque.")
+        alert_count += 1
+    elif bank['Texas_Ratio_Pct'] > 50 or bank['NPL_Ratio_Pct'] > 3.0:
+        st.warning(f"**VIGILANCE** : La détérioration du portefeuille (NPL à {bank['NPL_Ratio_Pct']:.1f}%) pèse sur le bilan. Un provisionnement supplémentaire pourrait être exigé par la BCE.")
+        warning_count += 1
+    else:
+        st.success(f"**SAIN** : Portefeuille de crédits performant. Le taux de NPL ({bank['NPL_Ratio_Pct']:.1f}%) est maîtrisé et parfaitement couvert par les provisions et le capital.")
+
+# --- PILIER 3 : LIQUIDITÉ (Liquidity) ---
+with p3:
+    st.markdown("#### 💧 Pilier 3 : Liquidité & Financement")
+    if bank['LCR_Ratio_Pct'] < 100 or bank['NSFR_Ratio_Pct'] < 100:
+        st.error(f"**CRITIQUE** : Non-conformité aux ratios Bâle III (LCR: {bank['LCR_Ratio_Pct']:.0f}%, NSFR: {bank['NSFR_Ratio_Pct']:.0f}%). Risque imminent d'illiquidité (Bank Run). *Note: calculé via Proxies.*")
+        alert_count += 1
+    elif bank['LCR_Ratio_Pct'] < 110 or bank['LTD_Ratio_Pct'] > 120:
+        st.warning(f"**VIGILANCE** : Liquidité sous tension ou forte dépendance aux marchés de gros (LTD: {bank['LTD_Ratio_Pct']:.0f}%). Le profil de refinancement doit être sécurisé.")
+        warning_count += 1
+    else:
+        st.success(f"**CONFORTABLE** : Profil de financement stable (NSFR: {bank['NSFR_Ratio_Pct']:.0f}%) et réserves de liquidité à court terme abondantes.")
+
+# --- PILIER 4 : RENTABILITÉ (Profitability) ---
+with p4:
+    st.markdown("#### 📈 Pilier 4 : Rentabilité & Modèle")
+    if bank['ROE_Pct'] < 0:
+        st.error(f"**DESTRUCTION DE VALEUR** : La banque est en perte (ROE: {bank['ROE_Pct']:.1f}%), ce qui érode organiquement sa base de capital trimestre après trimestre.")
+        alert_count += 1
+    elif bank['ROE_Pct'] < 5.0:
+        st.warning(f"**FAIBLE** : Rentabilité (ROE: {bank['ROE_Pct']:.1f}%) inférieure au coût du capital. Modèle économique sous pression, vulnérable aux taux d'intérêt.")
+        warning_count += 1
+    else:
+        st.success(f"**PERFORMANT** : Génération organique de capital robuste (ROE: {bank['ROE_Pct']:.1f}%), justifiant le profil de risque (Densité RWA: {bank['Risk_Density_Pct']:.0f}%).")
+
+st.markdown("---")
+
+# --- SYNTHÈSE GLOBALE DIRECTIVE ---
+st.markdown("### 🏛️ Conclusion (SREP)")
+
+if alert_count >= 2:
+    st.error(f"""
+    **STATUT : BANQUE EN RÉSOLUTION / RESTRUCTURATION (DANGER SYSTÉMIQUE)**
+    Cet établissement cumule {alert_count} défaillances critiques sur les piliers fondamentaux. Une intervention réglementaire immédiate est requise (injonction de recapitalisation, vente d'actifs, ou déclenchement du dispositif de résolution MREL/Bail-in).
+    """)
+elif alert_count == 1:
+    st.warning(f"""
+    **STATUT : SOUS SURVEILLANCE RENFORCÉE (EARLY WARNING)**
+    L'établissement présente une faille majeure. Bien que les autres piliers puissent compenser temporairement, la banque est extrêmement vulnérable. Une mise sous tutelle partielle ou une augmentation des exigences P2R est recommandée.
+    """)
+elif warning_count >= 2:
+    st.info(f"""
+    **STATUT : PROFIL MODÉRÉ / VULNÉRABLE**
+    Banque globalement solvable mais présentant {warning_count} points d'attention (marges faibles, NPL en hausse ou liquidité tendue). Aucun risque systémique immédiat, mais nécessite une optimisation du bilan à moyen terme.
+    """)
+else:
+    st.success(f"""
+    **STATUT : BANQUE CHAMPIONNE (INVESTMENT GRADE)**
+    Fondamentaux excellents. L'établissement surperforme les exigences réglementaires de la BCE. Il dispose d'une forte capacité d'absorption des chocs macroéconomiques et d'un modèle d'affaires pérenne.
+    """)
+
+st.caption("Méthodologie : Rapport généré selon les données publiques de l'EBA. Les indicateurs Pilier 2 et Liquidité sont modélisés par des proxies respectant l'esprit des exigences CRR/CRD IV de la BCE.")
