@@ -32,12 +32,12 @@ st.markdown("""
 
 st.title("🏦 Solvency Control Room")
 
-with st.expander("⚙️ Mise à jour des données EBA (Scraping)", expanded=True): # mis sur "True" pour qu'il soit ouvert si c'est vide
+with st.expander("Mise à jour des données EBA (Scraping)", expanded=True): # mis sur "True" pour qu'il soit ouvert si c'est vide
     st.info("Aucune donnée ? Sélectionnez une période et lancez l'extraction.")
     
     c_sel, c_btn = st.columns([1, 2])
     with c_sel:
-        selected_year = st.selectbox("Période cible :", ["2024", "2023", "2022"])
+        selected_year = st.selectbox("Période cible :", ["2025", "2024", "2023", "2022"])
     with c_btn:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 Lancer l'extraction et le calcul"):
@@ -49,13 +49,13 @@ with st.expander("⚙️ Mise à jour des données EBA (Scraping)", expanded=Tru
                     raw_files_dict = scraper.download_eba_data(period=selected_year)
                     
                     if raw_files_dict:
-                        st.write("📥 Fichiers téléchargés. Lancement de l'ETL...")
+                        st.write("Fichiers téléchargés. Lancement de l'ETL...")
                         
                         # 2. Nettoyage
                         df_clean = etl.run_etl(raw_files_dict) 
                         
                         if df_clean is not None and not df_clean.empty:
-                            st.write("🧮 Harmonisation des données...")
+                            st.write("Harmonisation des données...")
                             
                             # --- CORRECTION ICI ---
                             # On harmonise le nom de la colonne RWA
@@ -93,44 +93,178 @@ def load_data():
     # Mapping Noms (Liste étendue des principales banques européennes EBA)
     lei_mapping = {
         # --- FRANCE ---
-        "R0MUWSFPU8MPRO8K5P83": "BNP Paribas",
-        "969500TKUY0GD4QE4754": "Société Générale",
-        "969500TJ5KRTCJQWXH05": "Crédit Agricole Group",
-        "9695005MSX1OYEMGDF46": "Groupe BPCE",
-        "969500251306VVN14103": "La Banque Postale",
-        "J4KT8KOXD2P13C9T3180": "Crédit Mutuel",
-        "FOHUI1NY1AZSO6PB3W13": "HSBC Continental Europe",
+        "R0MUWSFPU8MPRO8K5P83":	"BNP Paribas",
+        "549300FH0WJAPEHTIQ77":	"BofA Securities Europe SA",
+        "969500STN7T9MRUMJ267":	"Bpifrance",
+        "9695000CG7B84NLR5984":	"Confédération Nationale du Crédit Mutuel",
+        "FR9695005MSX1OYEMGDF":	"Groupe BPCE",
+        "FR969500TJ5KRTCJQWXH":	"Groupe Crédit Agricole",
+        "F0HUI1NY1AZMJMD8LP67":	"HSBC Continental Europe",
+        "96950066U5XAAIRCPA78":	"La Banque Postale",
+        "96950001WI712W7PQG45":	"RCI Banque",
+        "549300HFEHJOXGE4ZE63":	"SFIL S.A.",
+        "O2RNE8IBXP4R0TD8PU41":	"Société générale S.A.",
+
         
         # --- ALLEMAGNE ---
-        "7LTWFZYICNSX8D621K86": "Deutsche Bank",
-        "851WYGNLUQLFZBSYGB56": "Commerzbank",
-        "5299000OZYK41CNKN243": "Landesbank Baden-Württemberg (LBBW)",
-        "DSNHHQ2B9X5N6OU08235": "Bayerische Landesbank (BayernLB)",
-        "529900V3ZPEFWVKE4M63": "DZ BANK",
-        "529900GGY5T66QCW0990": "Norddeutsche Landesbank (NordLB)",
-        "O2RNE8IBXP4R0TD8PU41": "Helaba (Landesbank Hessen-Thüringen)",
-        "2W8N8UU78PMDWI385219": "UniCredit Bank AG (HVB)",
+        "254900RNFMDM0P11YR84":	"ATLANTIC LUX HOLDCO S.A R.L.",
+        "VDYMYTQGZZ6DU0912C88":	"Bayerische Landesbank",
+        "851WYGNLUQLFZBSYGB56":	"COMMERZBANK Aktiengesellschaft",
+        "6TJCK1B7E7UTXP528Y04":	"Citigroup Global Markets Europe AG",
+        "5299007S3UH5RKUYDA52":	"DEUTSCHE APOTHEKER- UND ÄRZTEBANK EG",
+        "7LTWFZYICNSX8D621K86":	"DEUTSCHE BANK AKTIENGESELLSCHAFT",
+        "529900HNOAA1KXQJUQ27":	"DZ BANK AG Deutsche Zentral-Genossenschaftsbank, Frankfurt am Main",
+        "0W2PZJM8XOY22M4GG883":	"DekaBank Deutsche Girozentrale",
+        "DZZ47B9A52ZJ6LT6VV95":	"Deutsche Pfandbriefbank AG",
+        "391200EEGLNXBBCVKC73":	"Erwerbsgesellschaft der S-Finanzgruppe mbH & Co. KG",
+        "8IBZUGJ7JPLH368JE346":	"Goldman Sachs Bank Europe SE",
+        "529900JZTYE3W7WQH904":	"HASPA Finanzholding",
+        "TUKDD90GPC79G1KOE162":	"Hamburg Commercial Bank AG",
+        "549300ZK53CNGEEI6A29":	"J.P. Morgan SE",
+        "B81CK4ESI35472RHJ606":	"Landesbank Baden-Württemberg",
+        "DIZES5CFO5K3I5R58746":	"Landesbank Hessen-Thüringen Girozentrale",
+        "549300C9KPZR0VZ16R05":	"Morgan Stanley Europe Holding SE",
+        "529900GM944JT8YIRL63":	"Münchener Hypothekenbank eG",
+        "DSNHHQ2B9X5N6OUJ1236":	"Norddeutsche Landesbank - Girozentrale -",
+        "529900V3O1M5IHMOSF46":	"State Street Europe Holdings Germany S.a.r.l. & Co. KG",
+        "5299007QVIQ7IO64NX37":	"UBS Europe SE",
+        "529900SSGT49ZZSWYE62":	"Volkswagen Financial Services AG",
+        "529900S1KHKOEQL5CK20":	"Wüstenrot Bausparkasse Aktiengesellschaft",
+
         
         # --- ESPAGNE ---
-        "5493006QMFDDMYWIAM13": "Banco Santander",
-        "K8MS7FD7N5Z2WQ51AZ71": "BBVA",
-        "SI5RG2M0WQQLZCXKRM20": "CaixaBank",
-        "549300U4LTZ728KLKU68": "Banco de Sabadell",
-        "5493006YMJAQ4E1Q9223": "Bankinter",
-        
+        "54930056IRBXK0Q1FP96":	"Abanca Corporacion Bancaria, S.A.",
+        "K8MS7FD7N5Z2WQ51AZ71":	"Banco Bilbao Vizcaya Argentaria, S.A.",
+        "5493006QMFDDMYWIAM13":	"Banco Santander, S.A.",
+        "95980020140005881190":	"Banco de Crédito Social Cooperativo",
+        "SI5RG2M0WQQLZCXKRM20":	"Banco de Sabadell, S.A.",
+        "VWMYAEQSTOPNV0SUGU82":	"Bankinter, S.A.",
+        "7CUNS533WID6K7DGFI87":	"CaixaBank, S.A.",
+        "549300OLBL49CW8CT155":	"Ibercaja Banco, S.A.",
+        "549300U4LIZV0REEQQ46":	"Kutxabank, S.A.",
+        "5493007SJLLCTM6J6M37":	"Unicaja Banco, S.A.",
+            
         # --- ITALIE ---
-        "549300TRUWO2CD2G5692": "UniCredit SpA",
-        "2W8N8UU78PMDWI385219": "Intesa Sanpaolo",
-        "81560097964CDB924035": "Banco BPM",
-        "549300Z91F73F5S89N52": "BPER Banca",
-        "52990033C5FUCH75J479": "Mediobanca",
-        "J4CP7MHCXR8DAQMKIL78": "Banca Monte dei Paschi di Siena",
+        "7LVZJ6XRIE7VNZ4UBX81":	"BANCA MEDIOLANUM S.P.A.",
+        "J48C8PCSJVUBR8KCW529":	"BANCA POPOLARE DI SONDRIO SOCIETA' PER AZIONI",
+        "815600E4E6DCD2D25E30":	"BANCO BPM SOCIETA' PER AZIONI",
+        "N747OI7JINV7RUUH6190":	"BPER Banca S.p.A.",
+        "J4CP7MHCXR8DAQMKIL78":	"Banca Monte dei Paschi di Siena S.p.A.",
+        "LOO0AWXR8GF142JCO404":	"CASSA CENTRALE BANCA",
+        "815600AD83B2B6317788":	"CREDITO EMILIANO HOLDING SOCIETA' PER AZIONI",
+        "549300L7YCATGO57ZE10":	"FINECOBANK BANCA S.P.A.",
+        "NNVPP80YIZGEY2314M97":	"ICCREA BANCA S.P.A.",
+        "2W8N8UU78PMDQKZENC08":	"Intesa Sanpaolo S.p.A.",
+        "PSNL19R2RXX5U3QWHI44":	"Mediobanca - Banca di Credito Finanziario S.p.A.",
+        "549300TRUWO2CD2G5692":	"UNICREDIT, SOCIETA' PER AZIONI",
+
 
         # --- PAYS-BAS ---
-        "3TK20IVIUJ8J3ZU0QE75": "ING Groep",
-        "724500PMK2A2M1SQQ228": "ABN AMRO Bank",
-        "BFXS5XCH7N0Y05NIXW11": "Rabobank",
-        "549300L70BSU59300D71": "De Volksbank",
+        "BFXS5XCH7N0Y05NIXW11":	"ABN AMRO Bank N.V.",
+        "529900GGYMNGRQTDOO93":	"BNG Bank N.V.",
+        "DG3RU1DBUFHT4ZF9WN62":	"Coöperatieve Rabobank U.A.",
+        "549300NYKK9MWM7GGW15":	"ING Groep N.V.",
+        "JLP5FSPH9WPSHY3NIM24":	"Nederlandse Waterschapsbank N.V.",
+        "724500JIWG886A9RRT57":	"RBS Holdings N.V.",
+        "724500A1FNICHSDF2I11":	"de Volksbank N.V.",
+
+        # --- AUTRICHE ---
+        "529900S9YO2JHTIIDG38":	"BAWAG Group AG",
+        "9ZHRYM6F437SQJ6OUG95":	"Raiffeisen Bank International AG",
+        "529900SXEWPJ1MRRX537":	"Raiffeisen-Holding Niederösterreich-Wien",
+        "529900XSTAE561178282":	"Raiffeisenbankengruppe OÖ Verbund eGen",
+        "AT0000000000043000VB":	"VOLKSBANK WIEN AG VB",
+
+        # --- BELGIQUE ---
+        "A5GWLFH3KM7YV2SFQL84":	"Belfius Bank",
+        "549300DYPOFMXOR7XM56":	"Crelan",
+        "5493008QOCP58OLEN998":	"Investeringsmaatschappij Argenta",
+        "213800X3Q9LSAKRUWY91":	"KBC Groep",
+        "MMYX0N4ZEZ13Z4XCG897":	"The Bank of New York Mellon",
+
+        # --- CHYPRE ---
+        "635400L14KNHZXPUZM19":	"Bank of Cyprus Holdings Public Limited Company",
+
+        # --- DANEMARK ---
+        "MAES062Z21O4RZ2U7M96":	"Danske Bank A/S",
+        "3M5E1GQGKL17HI6CPN30":	"Jyske Bank A/S",
+        "LIU16F6VZJSD6UKHD557":	"Nykredit Realkredit A/S",
+
+        # --- ESTONIE ---
+        "529900JG015JC10LED24":	"AS LHV Group",
+
+        # --- FINLANDE ---
+        "529900HEKOENJHPNN480":	"Kuntarahoitus Oyj",
+        "529900ODI3047E2LIV03":	"Nordea Bank Abp",
+        "7437003B5WFBOIEFY714":	"OP Osuuskunta",
+
+        # --- GRECE ---
+        "213800DBQIB6VBNU5C64":	"Alpha Bank S.A.",
+        "JEUVK5RWVJEN8W0C9M24":	"Eurobank Ergasias Services and Holdings S.A.",
+        "5UMCZOEYKCVFAW8ZLO05":	"National Bank of Greece, S.A.",
+        "M6AD1Y1KW32H8THQ6F76":	"Piraeus Financial Holdings",
+
+        # --- HONGRIE ---
+        "3H0Q3U74FVFED2SHZT16":	"MBH bankcsoport",
+        "529900W3MOO00A18X956":	"OTP-csoport",
+
+        # --- IRELANDE ---
+        "635400AKJBGNS5WNQL34":	"AIB Group plc",
+        "EQYXK86SF381Q21S3020":	"Bank of America Europe Designated Activity Company",
+        "635400C8EK6DRI12LJ39":	"Bank of Ireland Group plc",
+        "2G5BKIC2CB69PRJH1W31":	"Barclays Bank Ireland plc",
+        "N1FBEDJ5J41VKZLO2475":	"Citibank Europe Plc",
+
+        # --- LATIVIE ---
+        "2138009Y59EAR7H1UO97":	"Akciju sabiedrība \"Citadele banka\"",
+
+        # --- LIECHTENSTEIN ---
+        "5493009EIBTCB1X12G89":	"LGT Group Foundation",
+        "529900OE1FOAM50XLP72":	"Liechtensteinische Landesbank AG",
+
+        # --- LITUANIE ---
+        "549300TK038P6EV4YU51":	"Akcinė bendrovė Šiaulių bankas",
+        "485100FX5Y9YLAQLNP12":	"Revolut Holdings Europe UAB",
+
+        # --- LUXEMBOURG ---
+        "9CZ7TVMR36CYD5TZBS50":	"Banque Internationale à Luxembourg",
+        "R7CQUF1DQM73HUTV1078":	"Banque et Caisse d´Epargne de l´Etat, Luxembourg",
+
+        # --- MALTE ---
+        "529900RWC8ZYB066JF16":	"Bank of Valletta Plc",
+        "213800TC9PZRBHMJW403":	"MDB Group Limited",
+
+        # --- NORVEGE ---
+        "549300GKFG0RYRRQ1414":	"DNB BANK ASA",
+        "7V6Z97IO7R1SEAO84Q32":	"SpareBank 1 SMN",
+        "549300Q3OIWRHQUQM052":	"SpareBank 1 Sør-Norge",
+
+        # --- POLOGNE ---
+        "5493000LKS7B3UTF7H35":	"Bank Polska Kasa Opieki S.A.",
+        "P4GTT6GF1W40CVIMFR43":	"Powszechna Kasa Oszczednosci Bank Polski S.A.",
+
+        # --- PORTUGAL ---
+        "JU1U6S0DG9YLT7N8ZV32":	"Banco Comercial Português, SA",
+        "TO822O0VT80V06K0FH57":	"Caixa Geral de Depósitos, S.A.",
+        "222100K6QL2V4MLHWQ08":	"LSF NANI INVESTMENTS S.A R.L.",
+
+        # --- ROUMANIE ---
+        "549300RG3H390KEL8896":	"Banca Transilvania",
+        "2138008AVF4W7FMW8W87":	"CEC BANK S.A.",
+
+        # --- SLOVENIE ---
+        "213800HDJ876ACJXXD05":	"AIKGROUP (CY) LIMITED",
+        "5493001BABFV7P27OW30":	"Nova Ljubljanska Banka d.d., Ljubljana",
+
+        # --- SUEDE ---
+        "EV2XZWMLLXF2QRX0CD47":	"Kommuninvest - Grupp",
+        "549300C6TUMDXNOVXS82":	"Länsförsäkringar Bank AB - gruppen",
+        "H0YX5LBGKDVOWCXBZ594":	"SBAB Bank AB - Grupp",
+        "F3JS33DEI6XQ4ZBPTN86":	"Skandinaviska Enskilda Banken - gruppen",
+        "NHBDILHZTYCNBV5UYZ31":	"Svenska Handelsbanken - gruppen",
+        "M312WZV08Y7LYUC71685":	"Swedbank - Grupp",
+
+
 
         # --- ROYAUME-UNI (Entités UE post-Brexit ou Groupes) ---
         "MP6I5ZYZBEU3UXPYFY54": "HSBC Holdings",
@@ -138,25 +272,9 @@ def load_data():
         "549300PPXHE2MFSCDA93": "Lloyds Banking Group",
         "2138005O9XJIJN4JPN90": "NatWest Group",
         "U4LOSYZ7YG4W3S5F2G91": "Standard Chartered",
-
-        # --- NORDIQUES (Suède, Danemark, Finlande, Norvège) ---
-        "529900ODI3047E2LIV03": "Nordea",
-        "MAES062Z21O4RZ2U7M96": "SEB (Skandinaviska Enskilda)",
-        "M312WZV08Y7LYUC71685": "Danske Bank",
-        "F7NTS631M5F18XQ26V13": "Swedbank",
-        "549300D5I7C66WKN4B31": "Handelsbanken",
-        "549300GKFG0RYRRQ1414": "DNB Bank",
-        "549300K7MT8135596I23": "OP Financial Group",
-
-        # --- AUTRES (Belgique, Autriche, Irlande, Portugal...) ---
-        "21380041JRJ96B5X6K53": "KBC Group",
-        "54930005F9312WJ9LG93": "Belfius Banque",
-        "549300X3H0VKEF8XN891": "Erste Group",
-        "9ZHRYM6F437SQJ6OUG95": "Raiffeisen Bank International",
-        "635400L14KZEWXQ14Y53": "AIB Group (Allied Irish Banks)",
-        "549300YPMVF137QRA232": "Bank of Ireland",
-        "PTCGD0AM0009": "Caixa Geral de Depósitos"
+        "XXXXXXXXXXXXXXXXXXXX": "All other banks",
     }
+
     df['Bank_Label'] = df.apply(lambda x: f"{lei_mapping.get(x['LEI'], 'Banque ' + str(x.get('NSA', 'EU')) + ' - ' + x['LEI'])}", axis=1)
 
     # --- Vérification des colonnes brutes ---
@@ -168,7 +286,7 @@ def load_data():
     if 'Date' not in df.columns: df['Date'] = "Inconnue"
 
     # ==========================================
-    # 🧮 CALCUL DES RATIOS DE SOLVABILITÉ BÂLE III
+    # CALCUL DES RATIOS DE SOLVABILITÉ BÂLE III
     # ==========================================
     # 1. Ratios de Capital
     df['CET1_Ratio_Pct'] = np.where(df['RWA_Final'] > 0, (df['CET1_Capital'] / df['RWA_Final']) * 100, 0)
@@ -271,7 +389,7 @@ card(l5, bank['NPL_Ratio_Pct'], "Taux NPL", "[Source : Calculé]\nPart des créd
 st.divider()
 
 # --- 6. GRAPHIQUES AVANCÉS ---
-st.subheader("📊 Analyse Comparative Visuelle")
+st.subheader("Analyse Comparative Visuelle")
 g_left, g_right = st.columns(2)
 
 with g_left:
@@ -307,7 +425,7 @@ with g_right:
 st.divider()
 
 # --- 7. VERDICT DÉTAILLÉ (MÉTHODOLOGIE SREP) ---
-st.subheader("🏁 Rapport d'Inspection : Synthèse des Risques")
+st.subheader("Rapport d'Inspection : Synthèse des Risques")
 
 st.markdown("""
 Cette section génère automatiquement une opinion de crédit basée sur les 4 piliers de l'analyse bancaire (Solvabilité, Qualité des Actifs, Liquidité, Rentabilité).
@@ -322,7 +440,7 @@ p3, p4 = st.columns(2)
 
 # --- PILIER 1 : SOLVABILITÉ (Capital) ---
 with p1:
-    st.markdown("#### 🛡️ Pilier 1 : Solvabilité")
+    st.markdown("#### Pilier 1 : Solvabilité")
     if bank['Capital_Buffer_Pct'] < 0:
         st.error(f"**CRITIQUE** : La banque est en infraction réglementaire avec un déficit de capital de {bank['Capital_Buffer_Pct']:.2f}%. Risque de restrictions sur les dividendes (MDA).")
         alert_count += 1
@@ -334,7 +452,7 @@ with p1:
 
 # --- PILIER 2 : QUALITÉ DES ACTIFS (Asset Quality) ---
 with p2:
-    st.markdown("#### 📉 Pilier 2 : Qualité des Actifs")
+    st.markdown("#### Pilier 2 : Qualité des Actifs")
     if bank['Texas_Ratio_Pct'] > 100 or bank['NPL_Ratio_Pct'] > 5.0:
         st.error(f"**CRITIQUE** : Texas Ratio alarmant ({bank['Texas_Ratio_Pct']:.0f}%) ou NPL trop lourd ({bank['NPL_Ratio_Pct']:.1f}%). Les créances douteuses menacent directement la viabilité de la banque.")
         alert_count += 1
@@ -346,7 +464,7 @@ with p2:
 
 # --- PILIER 3 : LIQUIDITÉ (Liquidity) ---
 with p3:
-    st.markdown("#### 💧 Pilier 3 : Liquidité & Financement")
+    st.markdown("#### Pilier 3 : Liquidité & Financement")
     if bank['LCR_Ratio_Pct'] < 100 or bank['NSFR_Ratio_Pct'] < 100:
         st.error(f"**CRITIQUE** : Non-conformité aux ratios Bâle III (LCR: {bank['LCR_Ratio_Pct']:.0f}%, NSFR: {bank['NSFR_Ratio_Pct']:.0f}%). Risque imminent d'illiquidité (Bank Run). *Note: calculé via Proxies.*")
         alert_count += 1
@@ -358,7 +476,7 @@ with p3:
 
 # --- PILIER 4 : RENTABILITÉ (Profitability) ---
 with p4:
-    st.markdown("#### 📈 Pilier 4 : Rentabilité & Modèle")
+    st.markdown("#### Pilier 4 : Rentabilité & Modèle")
     if bank['ROE_Pct'] < 0:
         st.error(f"**DESTRUCTION DE VALEUR** : La banque est en perte (ROE: {bank['ROE_Pct']:.1f}%), ce qui érode organiquement sa base de capital trimestre après trimestre.")
         alert_count += 1
@@ -371,7 +489,7 @@ with p4:
 st.markdown("---")
 
 # --- SYNTHÈSE GLOBALE DIRECTIVE ---
-st.markdown("### 🏛️ Conclusion (SREP)")
+st.markdown("### Conclusion (SREP)")
 
 if alert_count >= 2:
     st.error(f"""

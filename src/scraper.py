@@ -5,6 +5,12 @@ import requests
 # Remplacez ces URL fictives par les VRAIS liens directs vers les fichiers CSV de l'EBA.
 # Faites un clic droit > "Copier le lien" sur chaque bouton de téléchargement du site.
 EBA_SOURCES = {
+    "2025": {
+        "oth": "https://www.eba.europa.eu/assets/TE2025/Full_database/883401/tr_oth.csv",
+        "cre": "https://www.eba.europa.eu/assets/TE2025/Full_database/883401/tr_cre.csv",
+        "mrk": "https://www.eba.europa.eu/assets/TE2025/Full_database/883401/tr_mrk.csv",
+        "SDD": "https://www.eba.europa.eu/assets/TE2025/Full_database/883401/SDD.xlsx"
+    },
     "2024": {
         "oth": "https://www.eba.europa.eu/assets/TE2024/Full_database/256109/tr_oth.csv",
         "cre": "https://www.eba.europa.eu/assets/TE2024/Full_database/256109/tr_cre.csv",
