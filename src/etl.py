@@ -3,8 +3,8 @@ import numpy as np
 import os
 
 def load_data(dict_of_files):
-    """Charge les fichiers bruts à partir du dictionnaire fourni par le scraper."""
-    print("📥 Chargement des données brutes en mémoire...")
+
+    print("Chargement des données brutes en mémoire...")
     df_oth, df_cre, df_mrk, df_sdd = None, None, None, None
     
     try:
@@ -50,8 +50,6 @@ def clean_and_merge(df_oth, df_cre, df_mrk):
         if 'Date' in df.columns:
             df['Date'] = df['Date'].astype(str).str.strip()
 
-    # 2. Le Dictionnaire Indestructible (par Suffixes)
-    # Peu importe le préfixe de l'EBA (242, 252...), les 4 derniers chiffres ne changent pas.
     suffix_mapping = {
         '0102': 'CET1_Capital',      
         '0133': 'Tier1_Capital',
@@ -68,7 +66,7 @@ def clean_and_merge(df_oth, df_cre, df_mrk):
         if df is None or df.empty or 'Item' not in df.columns or 'Amount' not in df.columns: 
             return pd.DataFrame(columns=['LEI', 'Date'])
             
-        print(f"🔄 Transformation de {source_name}...")
+        print(f"Transformation de {source_name}...")
         
         # On convertit les items en texte pour chercher la fin du code
         df['Item_Str'] = df['Item'].astype(str)
@@ -93,8 +91,6 @@ def clean_and_merge(df_oth, df_cre, df_mrk):
         # On nettoie la colonne Amount (conversion en nombre)
         df_filtered['Amount'] = pd.to_numeric(df_filtered['Amount'], errors='coerce').fillna(0)
 
-        # 🚀 PIVOT MAGIQUE : On utilise 'max' pour prendre la ligne "Total" 
-        # et éviter de compter les sous-détails par pays en double !
         df_pivot = pd.pivot_table(
             df_filtered, 
             index=['LEI', 'Date'], 
@@ -111,7 +107,7 @@ def clean_and_merge(df_oth, df_cre, df_mrk):
     df_cre_pivot = pivot_eba_data(df_cre, "CRE")
 
     # 4. Fusion
-    print("🔗 Fusion des datasets...")
+    print("Fusion des datasets...")
     if not df_oth_pivot.empty and not df_cre_pivot.empty:
         master_df = pd.merge(df_oth_pivot, df_cre_pivot, on=['LEI', 'Date'], how='outer')
     elif not df_oth_pivot.empty:
@@ -126,7 +122,7 @@ def clean_and_merge(df_oth, df_cre, df_mrk):
     dates_dispo = sorted(master_df['Date'].dropna().unique())
     if dates_dispo:
         last_date = dates_dispo[-1]
-        print(f"📅 Analyse conservée pour la période la plus récente : {last_date}")
+        print(f"Analyse conservée pour la période la plus récente : {last_date}")
         master_df = master_df[master_df['Date'] == last_date]
     
     master_df = master_df.fillna(0)
@@ -135,7 +131,7 @@ def clean_and_merge(df_oth, df_cre, df_mrk):
 
 def run_etl(dict_of_files):
     print("\n" + "="*40)
-    print("🚀 DÉBUT DU PIPELINE ETL")
+    print("DÉBUT DU PIPELINE ETL")
     print("="*40)
     
     df_oth, df_cre, df_mrk, df_sdd = load_data(dict_of_files)
